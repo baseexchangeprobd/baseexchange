@@ -1,0 +1,778 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react'
+import {
+  Activity, Wallet, History, Zap,
+  Fingerprint, ShieldCheck, ShieldAlert, Scan,
+  CheckCircle2, ArrowUpRight, ArrowDownLeft,
+  TrendingUp, TrendingDown, Lock, Unlock,
+  Globe, Copy, ExternalLink, BarChart3,
+  ChevronRight, RefreshCw,
+} from 'lucide-react'
+
+/* ═══════════════════════════════════
+   Constants
+   ═══════════════════════════════════ */
+const RATE      = 122.9
+const RATE_PREV = 122.54
+const RATE_ΔPCT = (((RATE - RATE_PREV) / RATE_PREV) * 100).toFixed(2)
+
+const PAYMENT_METHODS = [
+  {
+    id:      'bkash',
+    name:    'bKash',
+    tagline: 'Instant · 24 / 7',
+    color:   '#D12053',
+    glyph:   'বি',
+    fee:     '0%',
+  },
+  {
+    id:      'nagad',
+    name:    'Nagad',
+    tagline: 'Govt-backed · Fast',
+    color:   '#F15A22',
+    glyph:   'ন',
+    fee:     '0%',
+  },
+  {
+    id:      'rocket',
+    name:    'Rocket',
+    tagline: 'DBBL · Secure',
+    color:   '#7B2FBE',
+    glyph:   'র',
+    fee:     '0%',
+  },
+]
+
+const NAV_ITEMS = [
+  { id: 'trade',  icon: Zap,      label: 'TRADE'  },
+  { id: 'orders', icon: History,  label: 'ORDERS' },
+  { id: 'wallet', icon: Wallet,   label: 'WALLET' },
+]
+
+const CONNECT_SEQUENCE = [
+  null,
+  'Scanning biometrics…',
+  'Verifying on-chain…',
+  'Securing vault…',
+]
+
+const MOCK_ORDERS = [
+  { id: 'TXN-8821', type: 'buy',  amount: '500',   usdc: '4.0684', method: 'bKash',  time: '2m ago',   status: 'confirmed' },
+  { id: 'TXN-8820', type: 'sell', amount: '1,200', usdc: '9.7639', method: 'Nagad',  time: '1h ago',   status: 'confirmed' },
+  { id: 'TXN-8819', type: 'buy',  amount: '250',   usdc: '2.0342', method: 'Rocket', time: '3h ago',   status: 'confirmed' },
+]
+
+/* ═══════════════════════════════════
+   Hooks
+   ═══════════════════════════════════ */
+function useAnimNumber(target, duration = 900) {
+  const [val, setVal] = useState(0)
+  useEffect(() => {
+    if (!target) return
+    const to = parseFloat(target) || 0
+    let start = null
+    const tick = (ts) => {
+      if (!start) start = ts
+      const p    = Math.min((ts - start) / duration, 1)
+      const ease = 1 - Math.pow(1 - p, 4)
+      setVal(to * ease)
+      if (p < 1) requestAnimationFrame(tick)
+    }
+    requestAnimationFrame(tick)
+  }, [target, duration])
+  return val
+}
+
+/* ═══════════════════════════════════
+   Sub-components
+   ═══════════════════════════════════ */
+
+/** Animated canvas particle network */
+function ParticleNet() {
+  const ref = useRef(null)
+  useEffect(() => {
+    const canvas = ref.current
+    if (!canvas) return
+    const resize = () => { canvas.width = canvas.offsetWidth; canvas.height = canvas.offsetHeight }
+    resize()
+    window.addEventListener('resize', resize)
+
+    const pts = Array.from({ length: 55 }, () => ({
+      x:  Math.random() * canvas.width,
+      y:  Math.random() * canvas.height,
+      vx: (Math.random() - 0.5) * 0.22,
+      vy: (Math.random() - 0.5) * 0.22,
+      r:  Math.random() * 1.2 + 0.3,
+      a:  Math.random() * 0.35 + 0.04,
+    }))
+
+    let raf
+    const draw = () => {
+      const ctx = canvas.getContext('2d')
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      for (const p of pts) {
+        p.x += p.vx; p.y += p.vy
+        if (p.x < 0) p.x = canvas.width
+        if (p.x > canvas.width) p.x = 0
+        if (p.y < 0) p.y = canvas.height
+        if (p.y > canvas.height) p.y = 0
+        ctx.beginPath()
+        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2)
+        ctx.fillStyle = `rgba(0,82,255,${p.a})`
+        ctx.fill()
+      }
+      for (let i = 0; i < pts.length; i++) {
+        for (let j = i + 1; j < pts.length; j++) {
+          const dx = pts[i].x - pts[j].x
+          const dy = pts[i].y - pts[j].y
+          const d  = Math.sqrt(dx * dx + dy * dy)
+          if (d < 110) {
+            ctx.beginPath()
+            ctx.moveTo(pts[i].x, pts[i].y)
+            ctx.lineTo(pts[j].x, pts[j].y)
+            ctx.strokeStyle = `rgba(0,82,255,${0.07 * (1 - d / 110)})`
+            ctx.lineWidth = 0.5
+            ctx.stroke()
+          }
+        }
+      }
+      raf = requestAnimationFrame(draw)
+    }
+    draw()
+    return () => { cancelAnimationFrame(raf); window.removeEventListener('resize', resize) }
+  }, [])
+  return (
+    <canvas
+      ref={ref}
+      style={{ position: 'fixed', inset: 0, width: '100%', height: '100%', opacity: 0.55, pointerEvents: 'none', zIndex: 0 }}
+    />
+  )
+}
+
+/** CRT scanline film grain */
+function Grain() {
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, zIndex: 999, pointerEvents: 'none',
+        background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.018) 2px, rgba(0,0,0,0.018) 4px)',
+        mixBlendMode: 'multiply',
+      }}
+    />
+  )
+}
+
+/** Horizontal scrolling price ticker */
+function PriceTicker({ rate, delta, isPositive }) {
+  const items = Array(8).fill(null).map((_, i) => ({
+    pair: ['USDC/BDT', 'ETH/BDT', 'BTC/BDT', 'BNB/BDT'][i % 4],
+    val:  [rate, (rate * 95000).toFixed(0), (rate * 3400000).toFixed(0), (rate * 520).toFixed(0)][i % 4],
+    sign: isPositive ? '+' : '-',
+    pct:  ['0.30', '1.24', '2.01', '0.55'][i % 4],
+  }))
+
+  return (
+    <div style={{ overflow: 'hidden', marginBottom: 16, opacity: 0.7, position: 'relative' }}>
+      <div style={{ display: 'flex', gap: 24, animation: 'tickerScroll 28s linear infinite', width: 'max-content' }}>
+        {[...items, ...items].map((item, i) => (
+          <span key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 10, fontFamily: 'Space Mono, monospace', whiteSpace: 'nowrap', color: 'rgba(255,255,255,0.45)' }}>
+            <span style={{ color: 'rgba(255,255,255,0.7)', fontWeight: 700 }}>{item.pair}</span>
+            ৳{item.val}
+            <span style={{ color: isPositive ? '#00E87A' : '#FF6B35' }}>{item.sign}{item.pct}%</span>
+            <span style={{ color: 'rgba(255,255,255,0.15)', marginLeft: 4 }}>·</span>
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/** Rate card with live data */
+function RateCard({ rate, delta, isPositive }) {
+  const [visible, setVisible] = useState(false)
+  useEffect(() => { const t = setTimeout(() => setVisible(true), 400); return () => clearTimeout(t) }, [])
+
+  return (
+    <div
+      className="ticker-bar"
+      style={{
+        opacity: visible ? 1 : 0,
+        transform: visible ? 'translateY(0) scale(1)' : 'translateY(10px) scale(0.98)',
+        transition: 'all 0.55s cubic-bezier(0.34,1.56,0.64,1)',
+      }}
+    >
+      <div>
+        <div className="field-label" style={{ marginBottom: 6 }}>USDC / BDT</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 28, fontWeight: 700, letterSpacing: '-0.02em' }}>
+            ৳{rate.toFixed(2)}
+          </span>
+          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--dust)' }}>BDT</span>
+        </div>
+      </div>
+      <div style={{ textAlign: 'right' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4, justifyContent: 'flex-end', marginBottom: 6, color: isPositive ? 'var(--green)' : 'var(--orange)' }}>
+          {isPositive ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, fontWeight: 700 }}>
+            {isPositive ? '+' : ''}{delta}%
+          </span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+          <div className="live-dot" />
+          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--dust)', letterSpacing: '0.1em' }}>BASE NETWORK</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** Connect / onboarding screen */
+function ConnectScreen({ onConnect }) {
+  const [step, setStep] = useState(0)
+
+  const handleConnect = useCallback(() => {
+    setStep(1)
+    setTimeout(() => setStep(2), 850)
+    setTimeout(() => setStep(3), 1700)
+    setTimeout(() => { onConnect(); setStep(0) }, 2500)
+  }, [onConnect])
+
+  const isProcessing = step > 0
+
+  const icons = [
+    <Fingerprint size={38} color="var(--blue)" />,
+    <Scan size={38} color="var(--blue)" style={{ animation: 'spin 1s linear infinite' }} />,
+    <ShieldCheck size={38} color="var(--green)" />,
+    <CheckCircle2 size={38} color="var(--green)" />,
+  ]
+
+  return (
+    <div
+      className="card card-glow-blue anim-fade-up"
+      style={{ textAlign: 'center', padding: '44px 28px 36px' }}
+    >
+      {/* Top accent line */}
+      <div style={{ position: 'absolute', top: 0, left: '20%', right: '20%', height: 1, background: 'linear-gradient(90deg, transparent, var(--blue), transparent)', opacity: 0.7 }} />
+
+      {/* Fingerprint ring */}
+      <div className="fp-ring-outer" style={{ opacity: isProcessing ? 1 : 1 }}>
+        {isProcessing && <div className="scan-beam" />}
+        <div className="fp-core">
+          <div style={{ transition: 'all 0.3s', display: 'flex' }}>
+            {icons[step]}
+          </div>
+        </div>
+      </div>
+
+      <h2 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 26, letterSpacing: '-0.025em', marginBottom: 10, lineHeight: 1.1 }}>
+        Secure Smart Wallet
+      </h2>
+      <p style={{ color: 'var(--ash)', fontSize: 13, lineHeight: 1.65, marginBottom: 28, maxWidth: 260, margin: '0 auto 28px' }}>
+        Biometric-gated, non-custodial access to the Base blockchain. Your keys, always.
+      </p>
+
+      {/* Step text */}
+      <div className="connect-step-text" style={{ marginBottom: 28 }}>
+        {CONNECT_SEQUENCE[step] || ''}
+      </div>
+
+      {/* Feature bullets */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 32, textAlign: 'left' }}>
+        {[
+          { icon: <Lock size={13} />, text: 'End-to-end encrypted on Base' },
+          { icon: <Globe size={13} />, text: 'P2P smart escrow — zero counterparty risk' },
+          { icon: <Zap size={13} />, text: '3–5 min settlement to your wallet' },
+        ].map((item, i) => (
+          <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'var(--dust)', fontSize: 12 }}>
+            <div style={{ color: 'var(--blue)', flexShrink: 0 }}>{item.icon}</div>
+            {item.text}
+          </div>
+        ))}
+      </div>
+
+      <button
+        className={`btn btn-primary btn-full ${isProcessing ? 'loading-shimmer' : ''}`}
+        onClick={handleConnect}
+        disabled={isProcessing}
+      >
+        {isProcessing
+          ? <><div className="spinner" /> Authenticating…</>
+          : <><Fingerprint size={18} /> Connect Smart Wallet</>
+        }
+      </button>
+
+      <p style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--dust)', marginTop: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+        <ShieldCheck size={12} /> Non-custodial · Open source · Base L2
+      </p>
+    </div>
+  )
+}
+
+/** Trade panel (buy/sell form) */
+function TradePanel({ activeTab, walletAddress }) {
+  const [selectedMethod, setSelectedMethod] = useState('')
+  const [amount, setAmount]                 = useState('')
+  const [isProcessing, setIsProcessing]     = useState(false)
+  const [status, setStatus]                 = useState(null) // null | 'success'
+
+  const usdc    = amount ? (parseFloat(amount) / RATE).toFixed(4) : '0.0000'
+  const hasInput = parseFloat(amount) > 0
+
+  const handleSubmit = useCallback(() => {
+    if (!amount || !selectedMethod) return
+    setIsProcessing(true)
+    setTimeout(() => { setIsProcessing(false); setStatus('success') }, 2400)
+  }, [amount, selectedMethod])
+
+  const reset = useCallback(() => {
+    setStatus(null)
+    setAmount('')
+    setSelectedMethod('')
+  }, [])
+
+  /* — Success — */
+  if (status === 'success') {
+    return (
+      <div className="card card-glow-green anim-scale-in" style={{ textAlign: 'center', padding: '48px 28px 36px' }}>
+        <div className="success-ring">
+          <CheckCircle2 size={48} color="var(--green)" />
+        </div>
+        <h3 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 24, letterSpacing: '-0.02em', marginBottom: 8 }}>
+          Order Complete
+        </h3>
+        <p style={{ color: 'var(--ash)', fontSize: 13, marginBottom: 10 }}>
+          Assets secured in your Base wallet
+        </p>
+        <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 13, color: 'var(--green)', marginBottom: 8 }}>
+          +{usdc} USDC confirmed
+        </div>
+        <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--dust)', marginBottom: 36 }}>
+          via {PAYMENT_METHODS.find(m => m.id === selectedMethod)?.name}
+        </div>
+
+        <div style={{ display: 'flex', gap: 10, marginBottom: 0 }}>
+          <button
+            className="btn"
+            style={{ flex: 1, height: 50, fontSize: 12, background: 'var(--s200)', border: '1px solid var(--rim)', color: 'var(--ash)' }}
+          >
+            <ExternalLink size={14} /> View on Explorer
+          </button>
+          <button className="btn btn-primary" style={{ flex: 1, height: 50, fontSize: 13 }} onClick={reset}>
+            New Trade
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="card anim-fade-up">
+      {/* ── Amount section ── */}
+      <div style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+          <span className="field-label">You {activeTab === 'buy' ? 'Pay' : 'Send'} (BDT)</span>
+          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--dust)', letterSpacing: '0.08em' }}>
+            RATE ৳{RATE}
+          </span>
+        </div>
+
+        <div className="amount-field">
+          <span className="amount-glyph">৳</span>
+          <input
+            type="number"
+            value={amount}
+            onChange={e => setAmount(e.target.value)}
+            placeholder="0"
+            className="amount-input"
+          />
+          {hasInput && (
+            <button
+              onClick={() => setAmount('')}
+              style={{ background: 'var(--s300)', border: 'none', color: 'var(--dust)', borderRadius: 8, padding: '4px 8px', fontSize: 11, cursor: 'pointer', flexShrink: 0 }}
+            >
+              CLR
+            </button>
+          )}
+        </div>
+
+        <div className={`usdc-preview ${hasInput ? 'visible' : ''}`}>
+          ≈ <strong style={{ color: '#fff' }}>{usdc}</strong> USDC
+          <span style={{ color: 'var(--dust)', marginLeft: 6 }}>on Base</span>
+        </div>
+      </div>
+
+      {/* Quick amounts */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
+        {['500', '1000', '2500', '5000'].map(v => (
+          <button
+            key={v}
+            onClick={() => setAmount(v)}
+            style={{
+              flex: 1, height: 36, fontSize: 11, fontFamily: 'Space Mono, monospace',
+              fontWeight: 700, borderRadius: 10, cursor: 'pointer',
+              background: amount === v ? 'var(--blue-dim)' : 'var(--s100)',
+              border: `1px solid ${amount === v ? 'var(--rim-blue)' : 'var(--rim)'}`,
+              color: amount === v ? 'var(--blue)' : 'var(--dust)',
+              transition: 'all 0.2s',
+            }}
+          >
+            ৳{v}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Payment methods ── */}
+      <div>
+        <span className="field-label" style={{ marginBottom: 12, display: 'block' }}>Payment Gateway</span>
+        {PAYMENT_METHODS.map((m, i) => (
+          <button
+            key={m.id}
+            onClick={() => setSelectedMethod(m.id)}
+            className={`method-btn ${selectedMethod === m.id ? 'method-selected' : ''}`}
+            style={{ animationDelay: `${i * 0.06}s` }}
+          >
+            <div className="method-icon" style={{ background: m.color }}>
+              {m.glyph}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{m.name}</div>
+              <div style={{ fontSize: 11, color: 'var(--dust)' }}>{m.tagline}</div>
+            </div>
+            <div style={{ textAlign: 'right', marginRight: selectedMethod === m.id ? 8 : 0 }}>
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 11, color: 'var(--green)', fontWeight: 700 }}>
+                {m.fee} fee
+              </div>
+            </div>
+            {selectedMethod === m.id && (
+              <div className="method-check">
+                <CheckCircle2 size={14} color="#fff" />
+              </div>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ── Escrow notice ── */}
+      <div className="escrow-banner">
+        <ShieldAlert size={15} style={{ color: '#FFBB00', flexShrink: 0, marginTop: 1 }} />
+        <div>
+          <div style={{ fontWeight: 700, fontSize: 12, marginBottom: 3, color: '#FFBB00' }}>Smart Escrow Active</div>
+          <div style={{ fontSize: 11, color: 'var(--ash)', lineHeight: 1.55 }}>
+            Funds are locked in a Base smart contract and released only after on-chain payment confirmation.
+          </div>
+        </div>
+      </div>
+
+      {/* ── CTA ── */}
+      <button
+        className={`btn btn-full ${activeTab === 'buy' ? 'btn-buy' : 'btn-sell'} ${isProcessing ? 'loading-shimmer' : ''}`}
+        onClick={handleSubmit}
+        disabled={!hasInput || !selectedMethod || isProcessing}
+        style={{ fontSize: 15 }}
+      >
+        {isProcessing
+          ? <><div className="spinner" /> Processing secure order…</>
+          : activeTab === 'buy'
+            ? <><ArrowDownLeft size={18} /> Buy {hasInput ? `${usdc} USDC` : 'USDC'}</>
+            : <><ArrowUpRight  size={18} /> Sell USDC for BDT</>
+        }
+      </button>
+    </div>
+  )
+}
+
+/** Order history panel */
+function OrdersPanel() {
+  return (
+    <div className="anim-fade-up">
+      <div style={{ marginBottom: 16 }}>
+        <h3 style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 18, letterSpacing: '-0.02em' }}>
+          Recent Orders
+        </h3>
+        <p style={{ color: 'var(--dust)', fontSize: 12, marginTop: 2 }}>Your last 3 transactions</p>
+      </div>
+
+      {MOCK_ORDERS.map((order, i) => (
+        <div
+          key={order.id}
+          className="card"
+          style={{ padding: '16px 18px', marginBottom: 10, animationDelay: `${i * 0.08}s` }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{
+              width: 40, height: 40, borderRadius: 12, flexShrink: 0,
+              background: order.type === 'buy' ? 'rgba(0,82,255,0.12)' : 'rgba(255,107,53,0.12)',
+              border: `1px solid ${order.type === 'buy' ? 'rgba(0,82,255,0.25)' : 'rgba(255,107,53,0.25)'}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              color: order.type === 'buy' ? 'var(--blue)' : 'var(--orange)',
+            }}>
+              {order.type === 'buy' ? <ArrowDownLeft size={18} /> : <ArrowUpRight size={18} />}
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 3 }}>
+                <span style={{ fontWeight: 700, fontSize: 13 }}>
+                  {order.type === 'buy' ? 'Bought' : 'Sold'} {order.usdc} USDC
+                </span>
+                <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 12, color: order.type === 'buy' ? 'var(--blue)' : 'var(--orange)' }}>
+                  ৳{order.amount}
+                </span>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span style={{ fontSize: 11, color: 'var(--dust)' }}>via {order.method} · {order.time}</span>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: 'var(--green)', fontFamily: 'Space Mono, monospace' }}>
+                  <CheckCircle2 size={10} /> {order.status}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+
+      <div style={{ textAlign: 'center', marginTop: 20 }}>
+        <button style={{ background: 'none', border: 'none', color: 'var(--dust)', fontSize: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, margin: '0 auto', fontFamily: 'Space Mono, monospace' }}>
+          View all on explorer <ExternalLink size={11} />
+        </button>
+      </div>
+    </div>
+  )
+}
+
+/** Wallet info panel */
+function WalletPanel({ address }) {
+  const [copied, setCopied] = useState(false)
+
+  const copy = () => {
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1800)
+  }
+
+  return (
+    <div className="anim-fade-up">
+      {/* Balance card */}
+      <div
+        className="card"
+        style={{
+          padding: '28px 24px',
+          marginBottom: 16,
+          background: 'linear-gradient(145deg, rgba(0,82,255,0.10) 0%, rgba(0,82,255,0.03) 60%)',
+          borderColor: 'rgba(0,82,255,0.20)',
+        }}
+      >
+        <div className="field-label" style={{ marginBottom: 10 }}>USDC Balance</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 20 }}>
+          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 38, fontWeight: 700, letterSpacing: '-0.03em' }}>
+            0.0000
+          </span>
+          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 13, color: 'var(--dust)' }}>USDC</span>
+        </div>
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button className="btn" style={{ flex: 1, height: 46, fontSize: 12, background: 'var(--blue)', color: '#fff', borderRadius: 12, boxShadow: '0 4px 16px rgba(0,82,255,0.25)' }}>
+            <ArrowDownLeft size={14} /> Receive
+          </button>
+          <button className="btn" style={{ flex: 1, height: 46, fontSize: 12, background: 'var(--s200)', border: '1px solid var(--rim)', color: 'var(--ash)', borderRadius: 12 }}>
+            <ArrowUpRight size={14} /> Send
+          </button>
+        </div>
+      </div>
+
+      {/* Address card */}
+      <div className="card" style={{ padding: '20px 22px', marginBottom: 16 }}>
+        <div className="field-label" style={{ marginBottom: 10 }}>Wallet Address</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 13, color: 'var(--ash)' }}>{address}</span>
+          <button
+            onClick={copy}
+            style={{
+              background: copied ? 'rgba(0,232,122,0.12)' : 'var(--s200)',
+              border: `1px solid ${copied ? 'rgba(0,232,122,0.3)' : 'var(--rim)'}`,
+              borderRadius: 10, padding: '6px 12px',
+              fontSize: 11, fontFamily: 'Space Mono, monospace',
+              color: copied ? 'var(--green)' : 'var(--dust)',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              flexShrink: 0,
+            }}
+          >
+            {copied ? '✓ Copied' : <><Copy size={11} /> Copy</>}
+          </button>
+        </div>
+      </div>
+
+      {/* Network info */}
+      <div className="card" style={{ padding: '20px 22px' }}>
+        <div className="field-label" style={{ marginBottom: 12 }}>Network</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <div style={{ width: 36, height: 36, background: 'var(--blue)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <Activity size={16} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 13 }}>Base Mainnet</div>
+              <div style={{ fontSize: 11, color: 'var(--dust)' }}>Chain ID: 8453</div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+            <div className="live-dot" />
+            <span style={{ fontFamily: 'Space Mono, monospace', fontSize: 9, color: 'var(--green)' }}>LIVE</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/* ═══════════════════════════════════
+   Main App
+   ═══════════════════════════════════ */
+export default function BaseExchangePro() {
+  const [isConnected,    setIsConnected]    = useState(false)
+  const [walletAddress,  setWalletAddress]  = useState('')
+  const [activeTab,      setActiveTab]      = useState('buy')
+  const [activeNav,      setActiveNav]      = useState('trade')
+  const [mounted,        setMounted]        = useState(false)
+
+  const isPositive = parseFloat(RATE_ΔPCT) > 0
+
+  useEffect(() => { setMounted(true) }, [])
+
+  const handleConnect = useCallback(() => {
+    setWalletAddress('0x71C7…4fCB')
+    setIsConnected(true)
+  }, [])
+
+  const renderContent = () => {
+    if (!isConnected) return <ConnectScreen onConnect={handleConnect} />
+
+    switch (activeNav) {
+      case 'orders': return <OrdersPanel />
+      case 'wallet': return <WalletPanel address={walletAddress} />
+      default:       return <TradePanel activeTab={activeTab} walletAddress={walletAddress} />
+    }
+  }
+
+  return (
+    <div className="page-shell">
+      <ParticleNet />
+      <Grain />
+      <div className="bg-blob-blue" />
+      <div className="bg-blob-green" />
+      <div className="noise-overlay" />
+
+      {/* ── Navigation bar ── */}
+      <nav className="nav-bar">
+        <div className="nav-inner">
+          {/* Logo */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div className="logo-badge">
+              <Activity size={19} color="#fff" />
+            </div>
+            <div>
+              <div style={{ fontFamily: 'Syne, sans-serif', fontWeight: 800, fontSize: 14, letterSpacing: '0.04em', lineHeight: 1 }}>
+                BASE EXCHANGE
+              </div>
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 8, color: 'rgba(0,82,255,0.7)', letterSpacing: '0.14em', marginTop: 3 }}>
+                BANGLADESH · PRO
+              </div>
+            </div>
+          </div>
+
+          {/* Right: live pill + wallet status */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            {isConnected && (
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--ash)', background: 'var(--s200)', border: '1px solid var(--rim)', borderRadius: 8, padding: '4px 10px' }}>
+                {walletAddress}
+              </div>
+            )}
+            <div className="live-pill">
+              <div className="live-dot" />
+              LIVE
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      {/* ── Main content ── */}
+      <main className="page-content" style={{ opacity: mounted ? 1 : 0, transition: 'opacity 0.3s' }}>
+
+        {/* Price ticker (always shown) */}
+        <PriceTicker rate={RATE} delta={RATE_ΔPCT} isPositive={isPositive} />
+
+        {/* Rate card */}
+        <RateCard rate={RATE} delta={RATE_ΔPCT} isPositive={isPositive} />
+
+        {/* Wallet chip (post-connect only) */}
+        {isConnected && (
+          <div className="wallet-chip anim-slide-in">
+            <div className="wallet-avatar">0x</div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 10, color: 'var(--dust)', marginBottom: 2, letterSpacing: '0.08em' }}>
+                CONNECTED · BASE MAINNET
+              </div>
+              <div style={{ fontFamily: 'Space Mono, monospace', fontSize: 13 }}>{walletAddress}</div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div className="live-dot" />
+            </div>
+          </div>
+        )}
+
+        {/* Buy / Sell tab rail (trade view only) */}
+        {isConnected && activeNav === 'trade' && (
+          <div className="tab-rail anim-fade-in delay-100">
+            {['buy', 'sell'].map(t => (
+              <button
+                key={t}
+                onClick={() => setActiveTab(t)}
+                className={`tab-btn ${activeTab === t ? (t === 'buy' ? 'tab-buy' : 'tab-sell') : ''}`}
+              >
+                {t === 'buy' ? <ArrowDownLeft size={14} /> : <ArrowUpRight size={14} />}
+                {t.toUpperCase()} USDC
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Dynamic content area */}
+        {renderContent()}
+
+        {/* Stats grid (trade view only, post-connect) */}
+        {isConnected && activeNav === 'trade' && (
+          <div className="stat-grid">
+            {[
+              { val: '3–5m',   label: 'Settlement',    color: 'var(--green)' },
+              { val: '0%',     label: 'Platform Fee',  color: 'var(--blue)'  },
+              { val: 'P2P',    label: 'Non-custodial', color: 'rgba(255,255,255,0.75)' },
+              { val: '24 / 7', label: 'Always On',     color: 'rgba(255,255,255,0.75)' },
+            ].map((s, i) => (
+              <div key={i} className="stat-card" style={{ animationDelay: `${i * 0.07}s` }}>
+                <div className="stat-value" style={{ color: s.color }}>{s.val}</div>
+                <div className="stat-label">{s.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </main>
+
+      {/* ── Bottom nav (post-connect only) ── */}
+      {isConnected && (
+        <nav className="bottom-nav">
+          <div className="bottom-nav-inner">
+            {NAV_ITEMS.map(item => {
+              const Icon   = item.icon
+              const active = activeNav === item.id
+              return (
+                <button
+                  key={item.id}
+                  onClick={() => setActiveNav(item.id)}
+                  className={`nav-item ${active ? 'nav-active' : ''}`}
+                >
+                  <Icon size={20} />
+                  <span>{item.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        </nav>
+      )}
+    </div>
+  )
+}
