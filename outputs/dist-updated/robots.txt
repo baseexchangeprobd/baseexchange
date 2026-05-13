@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://baseexchangepro.xyz/sitemap.xml
+
+Disallow: /admin
+Disallow: /.git
