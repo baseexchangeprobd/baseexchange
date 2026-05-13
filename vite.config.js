@@ -3,9 +3,10 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-    base: '/',           // ← এটা গুরুত্বপূর্ণ
+    base: '/',           // ← এটা সবচেয়ে গুরুত্বপূর্ণ (custom domain-এর জন্য)
       build: {
-          outDir: 'dist'
-            }
-            })
-            
+          outDir: 'dist',
+              emptyOutDir: true
+                }
+                })
+
